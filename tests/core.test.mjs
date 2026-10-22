@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateSpec, ValidationError } from '../src/spec.mjs';
-import { previewAutomation, deployAutomation, providers } from '../src/core.mjs';
+import { previewAutomation, providers } from '../src/core.mjs';
 import { n8nBaseUrl } from '../src/security.mjs';
 import { planAutomation } from '../src/planner.mjs';
 
@@ -38,42 +38,6 @@ test('rejects unsafe URLs, secrets, expressions and unknown actions', () => {
   const invalid = example();
   invalid.actions[0].type = 'shell';
   assert.throws(() => validateSpec(invalid), ValidationError);
-});
-
-test('deployment requires approval and explicit host allowlist', async () => {
-  await assert.rejects(() => deployAutomation(example(), {}), ValidationError);
-  await assert.rejects(() => deployAutomation(example(), { approved: true }, {}), ValidationError);
-});
-
-test('approved deployment creates a draft and never activates by default', async () => {
-  const calls = [];
-  const mockFetch = async (url, init) => {
-    calls.push({ url, init });
-    return { ok: true, text: async () => JSON.stringify({ id: 'workflow-123', name: 'Example notification' }) };
-  };
-  const env = {
-    AAB_ALLOWED_ACTION_HOSTS: 'httpbin.org',
-    N8N_BASE_URL: 'https://n8n.example.com',
-    N8N_API_KEY: 'test-key',
-  };
-  const response = await deployAutomation(example(), { approved: true }, env, mockFetch);
-  assert.equal(response.status, 'created_inactive');
-  assert.equal(calls.length, 1);
-  assert.match(calls[0].url, /\/api\/v1\/workflows$/);
-  assert.equal(calls[0].init.headers['X-N8N-API-KEY'], 'test-key');
-});
-
-test('activation is an additional explicit opt-in', async () => {
-  const urls = [];
-  const mockFetch = async (url) => {
-    urls.push(url);
-    return { ok: true, text: async () => JSON.stringify({ id: 'flow123' }) };
-  };
-  const env = { AAB_ALLOWED_ACTION_HOSTS: 'httpbin.org', N8N_BASE_URL: 'https://n8n.example.com', N8N_API_KEY: 'x' };
-  const result = await deployAutomation(example(), { approved: true, activate: true }, env, mockFetch);
-  assert.equal(result.status, 'activated');
-  assert.equal(urls.length, 2);
-  assert.match(urls[1], /\/activate$/);
 });
 
 test('local n8n is opt-in only', () => {

@@ -1,151 +1,116 @@
 # AI Automation Builder
 
-**Describe an automation → generate a validated plan → preview a native workflow → approve deployment.**
+**Describe it → validate a portable plan → preview it → approve locally → create an inactive workflow.**
 
-A self-hostable automation-building engine that exposes the same capabilities to Claude, Codex, Cursor, other MCP clients, a CLI, and a token-protected HTTP API. Written in dependency-free Node.js 22 ESM.
+[![Verify and release](https://github.com/fernandogarzaaa/AI-Automation-Builder-/actions/workflows/ci-release.yml/badge.svg)](https://github.com/fernandogarzaaa/AI-Automation-Builder-/actions/workflows/ci-release.yml)
 
-> **v0.1.0 scope:** n8n workflow creation and optional activation are implemented. Portable JSON plans and previews are implemented. Make, Zapier, and Activepieces are **not** yet connected. This release does not claim to build arbitrary workflows on every platform.
+AI Automation Builder (AAB) is a self-hostable MCP + CLI + HTTP system that turns natural-language instructions into an audited *workflow draft*. It targets Claude, Codex, Cursor, and any compatible stdio MCP client.
 
-## What works today
+**Current release: v0.2.0.** n8n is the sole implemented deployment target. Make, Zapier, Activepieces, Pipedream, and other platforms need separate, version-tested adapters, permission grants, and credential brokers. It is **not** a hosted universal automation service or a verified production SaaS.
 
-- Natural-language planning through an operator-configured OpenAI-compatible chat-completions endpoint.
-- Strict portable AutomationSpec v1 validation and n8n workflow compilation.
-- Manual, inbound webhook, and cron triggers; sequential static HTTPS HTTP steps.
-- Read-only planning/preview; explicit `approved: true` for workflow creation; separate `activate: true` opt-in.
-- Hostname allowlists, URL validation, credential isolation, local-only API default, bearer authentication, and request limits.
-- MCP stdio, CLI, and REST interfaces, tests, Docker image definition, and release CI.
+## Implemented
 
-## Requirements
+- Strict `AutomationSpec v1` plan validation. Optional natural-language planner using an OpenAI-compatible chat-completions model. Models cannot supply credentials or arbitrary executable code.
+- n8n native workflow JSON compiler: manual, webhook and five-field cron triggers, with sequential static HTTPS API requests (GET, POST, PUT, PATCH, DELETE).
+- Stdio MCP server, CLI, and local bearer-protected HTTP API.
+- Durable SQLite approval receipts, thirty-minute expiry, preview fingerprints, audit events, exact destination-host allowlist.
+- **Operator-only interactive approval:** the LLM-accessible MCP/REST interfaces cannot grant approval.
+- Unique preview claims and idempotency keys prevent duplicate POSTs on retries. Ambiguous outcomes are recorded as `uncertain` and require reconciliation.
+- Draft creation is always **inactive**. Activate the workflow manually in n8n after its own review. CLI cannot silently activate it.
 
-- Node.js 22 or later.
-- An OpenAI-compatible chat-completions API key and model for natural-language planning (not required for preview/deploy of existing JSON).
-- An n8n instance with public API enabled and an API key for deployment.
-- Permission to create workflows on that n8n instance.
+## Prerequisites
 
-## Quick start
+Node.js 22.13+ (Node.js 24 recommended), a running n8n instance with its API enabled and key, and an AI provider/model for natural-language planning. No third-party npm dependencies are required.
 
 ```bash
 git clone https://github.com/fernandogarzaaa/AI-Automation-Builder-.git
 cd AI-Automation-Builder-
 cp .env.example .env
-# Edit .env: AI_API_KEY, AI_MODEL, N8N_BASE_URL, N8N_API_KEY,
-# and AAB_ALLOWED_ACTION_HOSTS. Never commit .env.
+# Set AAB_ALLOWED_ACTION_HOSTS, N8N_BASE_URL, N8N_API_KEY.
+# For natural language also set AI_API_KEY and AI_MODEL.
 node --env-file=.env src/cli.mjs providers
-node --env-file=.env src/cli.mjs plan "When I manually run this, POST a JSON message to https://httpbin.org/post"
-node src/cli.mjs preview examples/automation.json
-node --env-file=.env src/cli.mjs deploy examples/automation.json --approve
-# Only if you also want to enable the workflow:
-node --env-file=.env src/cli.mjs deploy examples/automation.json --approve --activate
+node --env-file=.env src/cli.mjs plan "When I manually start it, POST JSON to https://httpbin.org/post"
+node --env-file=.env src/cli.mjs preview examples/automation.json
 ```
 
-**Caution:** Running deploy twice creates two workflows. The example uses httpbin.org; add `httpbin.org` to `AAB_ALLOWED_ACTION_HOSTS` for a real deployment. Activation is not required for draft creation.
-
-## MCP: Claude, Codex, Cursor and compatible clients
-
-The server uses the Model Context Protocol over stdio. No vendor-specific plugin SDK is needed.
-
-**Claude Desktop**: Add to your MCP configuration, using an absolute local path:
-
-```json
-{
-  "mcpServers": {
-    "ai-automation-builder": {
-      "command": "node",
-      "args": ["--env-file=/ABSOLUTE/PATH/AI-Automation-Builder-/.env", "/ABSOLUTE/PATH/AI-Automation-Builder-/src/mcp.mjs"]
-    }
-  }
-}
-```
-
-**Claude Code**:
+The `preview` result includes a `previewId`, `fingerprint`, and `idempotencyKey`. Inspect every action, hostname and static payload, then *in your own terminal*:
 
 ```bash
-claude mcp add --transport stdio ai-automation-builder -- node --env-file=/ABSOLUTE/PATH/AI-Automation-Builder-/.env /ABSOLUTE/PATH/AI-Automation-Builder-/src/mcp.mjs
+node --env-file=.env src/cli.mjs inspect PREVIEW_ID
+node --env-file=.env src/cli.mjs approve PREVIEW_ID
+# Interactive terminal required; asks you to type a random confirmation.
+node --env-file=.env src/cli.mjs deploy PREVIEW_ID IDEMPOTENCY_KEY
+node --env-file=.env src/cli.mjs status IDEMPOTENCY_KEY
 ```
 
-**Codex**: Add to your `config.toml`:
+**Use the same state database and OS user in CLI, MCP and HTTP.** Set `AAB_STATE_PATH` to a shared absolute *local* file path if different processes use different environments. The default is `~/.ai-automation-builder/state.sqlite`. Back it up and restrict access; it contains workflow plan data. Do not run it over network filesystems or use as a multi-host job queue.
+
+## Install for Claude and Codex (MCP stdio)
+
+The plugin is a **standard MCP server**, not a proprietary Claude or Codex plugin package.
+
+Claude Code:
+
+```bash
+claude mcp add --transport stdio ai-automation-builder -- node --env-file=/ABSOLUTE/PATH/.env /ABSOLUTE/PATH/src/mcp.mjs
+```
+
+Codex `config.toml`:
 
 ```toml
 [mcp_servers.ai-automation-builder]
 command = "node"
-args = ["--env-file=/ABSOLUTE/PATH/AI-Automation-Builder-/.env", "/ABSOLUTE/PATH/AI-Automation-Builder-/src/mcp.mjs"]
+args = ["--env-file=/ABSOLUTE/PATH/.env", "/ABSOLUTE/PATH/src/mcp.mjs"]
 ```
 
-Cursor and other MCP hosts use the same command/args pattern. Use an absolute path. Never place real secrets in a committed MCP config.
+Claude Desktop/Cursor use the equivalent MCP stdio command and args. The server currently implements the 2025-era MCP initialization handshake, not the incompatible 2026-07-28 stateless `server/discover` transport.
 
-Available MCP tools:
-
-| Tool | Effect |
-| --- | --- |
-| `automation_providers` | Read current provider capability matrix |
-| `automation_plan` | Generate and validate JSON from natural language |
-| `automation_preview` | Validate and compile an n8n workflow without creating it |
-| `automation_deploy` | Create n8n workflow only with explicit approval; activation separate |
-
-Example conversation: *"Plan a webhook-triggered workflow that POSTs to my documented HTTPS endpoint. Show me the preview. Do not deploy until I approve."*
+MCP tools: `automation_providers`, `automation_plan`, `automation_preview`, `automation_inspect`, `automation_deploy`, `automation_status`. An AI host can prepare and deploy an **approved** preview but it has no tool that can approve one. An operator must run `approve` locally.
 
 ## HTTP API
 
-Set `AAB_API_TOKEN` to a random string of at least 24 characters, then:
+Start with `AAB_API_TOKEN` set to at least 24 random characters. It binds to `127.0.0.1:8787` by default. Non-loopback binding requires `AAB_REMOTE_API_EXPLICIT_OPT_IN=true` and a separate TLS/authentication gateway.
 
-```bash
-node --env-file=.env src/api.mjs
-curl -s http://127.0.0.1:8787/healthz
-curl -s -H "Authorization: Bearer $AAB_API_TOKEN" http://127.0.0.1:8787/v1/providers
-curl -s -X POST http://127.0.0.1:8787/v1/preview \
-  -H "Authorization: Bearer $AAB_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"spec":{"version":1,"name":"Example","description":"Demo","trigger":{"type":"manual"},"actions":[{"id":"post","type":"http","method":"POST","url":"https://httpbin.org/post","body":{"ok":true}}]}}'
-```
+- `GET /healthz` unauthenticated.
+- `GET /v1/providers`, `GET /v1/previews/:previewId`, `GET /v1/deployments/:idempotencyKey` require `Authorization: Bearer <token>`.
+- `POST /v1/plan` accepts `{"prompt":"..."}`.
+- `POST /v1/preview` accepts `{"spec":{...},"provider":"n8n"}`.
+- `POST /v1/deploy` accepts `{"previewId":"...","idempotencyKey":"..."}`. No legacy `approved: true` or `activate: true` bypass.
 
-Endpoints: `GET /healthz`, `GET /v1/providers`, `POST /v1/plan` (body `{"prompt":"..."}`), `POST /v1/preview` (body `{"spec":{...}}`), and `POST /v1/deploy` (body `{"spec":{...},"approved":true,"activate":false}`). API binds to `127.0.0.1` by default. Use a TLS reverse proxy, authentication and network policies before remote exposure.
+There is intentionally **no HTTP or MCP approval endpoint**.
 
-## Portable AutomationSpec v1
+## Spec and current limits
 
 ```json
 {
   "version": 1,
-  "name": "Notify service",
-  "description": "Send a static JSON payload",
+  "name": "Service notification",
+  "description": "Send a static payload",
   "trigger": { "type": "manual" },
-  "actions": [
-    {
-      "id": "send",
-      "type": "http",
-      "method": "POST",
-      "url": "https://httpbin.org/post",
-      "headers": { "content-type": "application/json" },
-      "body": { "message": "Hello" }
-    }
-  ]
+  "actions": [{
+    "id": "notify",
+    "type": "http",
+    "method": "POST",
+    "url": "https://httpbin.org/post",
+    "headers": { "content-type": "application/json" },
+    "body": { "message": "Hello" }
+  }]
 }
 ```
 
-Supported triggers: `manual`, `webhook` (requires lowercase `path`), `schedule` (requires five-field `cron`). Supported actions: `http` with HTTPS URLs, static JSON body, and non-secret headers. Sequential steps only. **No credential references, dynamic mappings, branching, loops, custom code, or provider-specific nodes in v0.1.** The planner refuses to fabricate unspecified endpoint URLs.
+Static actions only; **no OAuth account connections, conditionals, dynamic field mapping, loops, typed native service actions, attachments, error routes, execution verification, or portable imports of provider-native workflows.** The planner requires an actual documented HTTPS endpoint; it does not invent one.
 
-## Security and production boundaries
+## Production limitations
 
-- **Plan → preview → human review → create draft → optional activation** is the required workflow.
-- Allowlist every action destination hostname in `AAB_ALLOWED_ACTION_HOSTS`. This is an exact-match list, not wildcard matching.
-- API credentials stay in local environment variables. Sensitive HTTP authorization headers are rejected from generated workflow specs.
-- No private or literal-IP action hosts, HTTP action URLs, or provider expressions.
-- Static hostname checks cannot prevent DNS rebinding or remote redirect abuse. Use network-layer egress controls on the **n8n worker**, block private CIDRs, and restrict redirect behavior before using untrusted automation inputs.
-- n8n may execute workflows with the permissions of its own instance. Use a dedicated least-privilege instance, audit changes, and separate production credentials.
-- This project does not automatically publish a hosted SaaS service, provision provider accounts, or obtain OAuth grants.
+**Do not treat a green CI run as a successful real-provider qualification.** AAB has not been verified end-to-end against a real n8n instance or multiple automation vendors in this chat. The n8n worker needs egress firewall rules blocking private networks, DNS-rebinding and redirect abuse. The API needs TLS if exposed, platform keys need a secret manager, and SaaS use needs per-tenant auth, quotas, isolation and observability.
 
-Read [SECURITY.md](SECURITY.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Verification and release
+See [Production gates](docs/PRODUCTION_GATES.md), [Security](SECURITY.md), and [Architecture](docs/ARCHITECTURE.md).
 
 ```bash
 npm run check
 npm test
 ```
 
-GitHub Actions checks syntax and tests on pushes and pull requests. After successful verification of a push to `main`, it attempts to publish GitHub Release `v0.1.0` if it does not already exist. Release publication depends on repository Actions and `GITHUB_TOKEN` permissions.
-
-## Roadmap
-
-Add an OAuth credential broker, declarative typed mappings, more native action types, durable idempotency and job state, provider-specific adapters (Activepieces, Make, Zapier), approval/audit persistence, and hosted multi-tenant authentication. These are roadmap items, **not shipped capabilities**.
+The release workflow creates tag `v0.2.0` **only after CI verification succeeds**. Live credentials are never used in unit tests.
 
 MIT licensed.

@@ -1,3 +1,11 @@
+# v0.2 security model
+
+AAB uses a durable SQLite journal for preview receipts and one-deployment-per-preview idempotency. A caller (CLI, MCP or HTTP) first records a validated preview using `prepare()`. A human must approve it in an interactive local CLI (no MCP/REST approval operation). The deployment endpoint accepts the preview ID and idempotency key, performs a transactional unique claim, calls the n8n create API and persists an inactive workflow ID. If the result is ambiguous or the process exits mid-request, the journal refuses automatic repeat creation. Operators must reconcile `uncertain`/stale `in_progress` states against n8n manually. The approval expires in 30 minutes; existing idempotent responses remain retrievable after expiry.
+
+n8n execution is independent of AAB; enforce outbound network policy on n8n workers. This is a single-host SQLite control plane, not a multi-tenant distributed service. Real vendor E2E qualification is still required.
+
+---
+
 # Architecture and adapter contract
 
 ```text
@@ -11,9 +19,9 @@ Validated AutomationSpec v1  <--- JSON file / REST / MCP tool
     |
     +---- preview ----> n8n compiler ----> native workflow JSON
     |
-    +---- approval + host allowlist ----> n8n API create (inactive)
+    +---- local terminal approval + SQLite claim ----> n8n API create (inactive)
                                          |
-                                         +---- optional activation
+                                         +---- activate manually in n8n
 ```
 
 ## Boundaries

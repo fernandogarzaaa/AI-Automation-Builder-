@@ -5,3 +5,8 @@ node_modules/
 coverage/
 .DS_Store
 *.log
+
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.aab/

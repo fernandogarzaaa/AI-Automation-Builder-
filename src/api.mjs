@@ -4,7 +4,8 @@ import { timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { planAutomation } from './planner.mjs';
-import { previewAutomation, deployAutomation, providers } from './core.mjs';
+import { providers } from './core.mjs';
+import { prepare, inspect, deploy, deploymentStatus } from './operations.mjs';
 import { ValidationError } from './spec.mjs';
 import { safeError } from './security.mjs';
 
@@ -54,13 +55,18 @@ export function createApiServer(env = process.env) {
       if (hits.size > 10000) hits.clear();
       if (entry.count > 60) return send(res, 429, { error: 'Rate limit exceeded' });
       if (req.method === 'GET' && req.url === '/v1/providers') return send(res, 200, providers());
+      if (req.method === 'GET' && /^\/v1\/deployments\/[A-Za-z0-9._-]{12,128}$/.test(req.url)) return send(res, 200, deploymentStatus(req.url.split('/').at(-1), env));
+      if (req.method === 'GET' && /^\/v1\/previews\/[0-9a-f-]{36}$/.test(req.url)) return send(res, 200, inspect(req.url.split('/').at(-1), env));
       if (req.method !== 'POST') return send(res, 404, { error: 'Not found' });
       const body = await jsonBody(req);
       let output;
       switch (req.url) {
         case '/v1/plan': output = await planAutomation(body.prompt, env); break;
-        case '/v1/preview': output = previewAutomation(body.spec); break;
-        case '/v1/deploy': output = await deployAutomation(body.spec, { approved: body.approved, activate: body.activate }, env); break;
+        case '/v1/preview': output = prepare(body.spec, body.provider || 'n8n', env); break;
+        case '/v1/deploy':
+          if ('approved' in body || 'activate' in body) throw new ValidationError('Boolean approval/activation is not accepted. Approve the preview locally, then deploy.');
+          output = await deploy(body.previewId, body.idempotencyKey, env);
+          break;
         default: return send(res, 404, { error: 'Not found' });
       }
       return send(res, 200, output);
@@ -76,6 +82,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const port = Number(process.env.AAB_API_PORT || 8787);
     const host = process.env.AAB_API_HOST || '127.0.0.1';
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new ValidationError('Invalid API port');
+    if (!['127.0.0.1', '::1', 'localhost'].includes(host) && process.env.AAB_REMOTE_API_EXPLICIT_OPT_IN !== 'true') throw new ValidationError('Public binding is blocked unless AAB_REMOTE_API_EXPLICIT_OPT_IN=true');
     server.listen(port, host, () => console.error('AAB API listening on ' + host + ':' + port));
   } catch (error) {
     console.error(safeError(error));

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { planAutomation } from './planner.mjs';
-import { previewAutomation, deployAutomation, providers } from './core.mjs';
+import { providers } from './core.mjs';
+import { prepare, inspect, deploy, deploymentStatus } from './operations.mjs';
 import { safeError } from './security.mjs';
 
 const specSchema = { type: 'object', description: 'Portable AutomationSpec v1 object; use automation_plan to generate one.' };
@@ -19,20 +20,31 @@ const tools = [
   },
   {
     name: 'automation_preview',
-    description: 'Validate a spec and compile an n8n workflow preview without side effects. Review before deployment.',
+    description: 'Validate spec and create a 30-minute local preview receipt; review it before local human approval.',
     inputSchema: { type: 'object', properties: { spec: specSchema }, required: ['spec'], additionalProperties: false },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  {
+    name: 'automation_inspect',
+    description: 'Inspect a preview and its approval state.',
+    inputSchema: { type: 'object', properties: { previewId: { type: 'string' } }, required: ['previewId'], additionalProperties: false },
     annotations: { readOnlyHint: true },
   },
   {
     name: 'automation_deploy',
-    description: 'Create an n8n workflow. Side effect. Only call after the user explicitly reviews and approves the preview; activate requires separate explicit consent.',
+    description: 'Create an inactive n8n workflow after a human runs ai-automation-builder approve PREVIEW_ID in a terminal. Requires an idempotency key.',
     inputSchema: {
       type: 'object',
-      properties: { spec: specSchema, approved: { type: 'boolean', const: true }, activate: { type: 'boolean', default: false } },
-      required: ['spec', 'approved'],
+      properties: { previewId: { type: 'string' }, idempotencyKey: { type: 'string', minLength: 12, maxLength: 128 } },
+      required: ['previewId', 'idempotencyKey'],
       additionalProperties: false,
     },
     annotations: { destructiveHint: true, readOnlyHint: false },
+  },
+  {
+    name: 'automation_status', description: 'Inspect a deployment outcome by idempotency key.',
+    inputSchema: { type: 'object', properties: { idempotencyKey: { type: 'string' } }, required: ['idempotencyKey'], additionalProperties: false },
+    annotations: { readOnlyHint: true },
   },
 ];
 
@@ -44,8 +56,10 @@ async function callTool(name, args) {
   switch (name) {
     case 'automation_providers': return providers();
     case 'automation_plan': return await planAutomation(args.prompt);
-    case 'automation_preview': return previewAutomation(args.spec);
-    case 'automation_deploy': return await deployAutomation(args.spec, { approved: args.approved, activate: args.activate });
+    case 'automation_preview': return prepare(args.spec);
+    case 'automation_inspect': return inspect(args.previewId);
+    case 'automation_deploy': return await deploy(args.previewId, args.idempotencyKey);
+    case 'automation_status': return deploymentStatus(args.idempotencyKey);
     default: throw new Error('Unknown tool');
   }
 }
@@ -59,10 +73,10 @@ async function handle(message) {
     switch (message.method) {
       case 'initialize':
         output = {
-          protocolVersion: ['2026-07-28', '2025-11-25', '2025-06-18'].includes(message.params?.protocolVersion) ? message.params.protocolVersion : '2025-11-25',
+          protocolVersion: ['2025-11-25', '2025-06-18'].includes(message.params?.protocolVersion) ? message.params.protocolVersion : '2025-11-25',
           capabilities: { tools: { listChanged: false } },
-          serverInfo: { name: 'ai-automation-builder', version: '0.1.0' },
-          instructions: 'Plan, preview, and obtain explicit human approval before deployment. Deployment never activates by default.',
+          serverInfo: { name: 'ai-automation-builder', version: '0.2.0' },
+          instructions: 'Plan, preview, then ask human to run ai-automation-builder approve PREVIEW_ID locally; deployment creates an inactive n8n workflow only.',
         };
         break;
       case 'ping': output = {}; break;

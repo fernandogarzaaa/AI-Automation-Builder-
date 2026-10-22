@@ -1,30 +1,25 @@
-# Security policy
+# Security policy and residual risks
 
-## Reporting vulnerabilities
+Report vulnerabilities privately to the maintainer using GitHub's private reporting feature when available. Do not paste tokens or exploit details into issues.
 
-Please use GitHub's private vulnerability reporting feature if enabled for this repository. Otherwise contact the repository maintainer privately. Do not publish secrets, exploit details or real access tokens in an issue.
+## Security controls implemented
 
-## Threat model
+- Strict allowlist for HTTPS action hosts and validation of portable workflow steps; no provider expressions, untrusted code, or inline credential headers.
+- Local terminal approval with random confirmation code; preview expires in 30 minutes.
+- Preview fingerprint, SQLite-backed audit events, one deployment per preview and persistent idempotency keys.
+- All n8n creations inactive. Activation must be done separately in the n8n dashboard.
+- HTTP API bearer authentication, small request limits, per-IP throttling and loopback-only default.
+- Keys from environment variables; not returned in MCP or REST results.
 
-AI-generated plans and natural-language prompts are untrusted input. The n8n deployment API can create executable workflows. AAB therefore validates a restricted intermediate representation and separates planning, previewing, creation and activation.
+## Residual risks and requirements
 
-### Controls implemented
+- **SSRF**: Allowlisting a hostname is not enough. n8n runs the HTTP action independently, and allowed DNS names may rebind or redirect to internal networks. Apply **network-level egress restrictions on n8n workers**, including metadata and private CIDRs.
+- **Secrets**: Plaintext workflow payloads and data exist in the local SQLite state store. Secure the host, encrypt backups, manage retention and use dedicated credentials. Do not place secrets in URLs or bodies.
+- **Integrity/consent**: Approval is bound to a spec fingerprint and a local interactive terminal, but there is no cryptographic operator identity, separation of duties or remote approval UI.
+- **Failures**: POST timeouts can leave an uncertain result. Never blindly retry with a new idempotency key. Reconcile against n8n before corrective action.
+- **Distributed use**: SQLite is a single-host store, not a distributed consensus service. Do not use multi-replica app servers against a shared network filesystem.
+- **Remote API**: Do not expose without a vetted TLS reverse proxy, OIDC authorization, quotas, audit and abuse controls.
+- **MCP**: Tool annotations are hints, not authorization. The server enforces an approval record regardless of tool caller assertions.
+- **Vendor compatibility**: Native n8n API payloads are subject to version changes. Run E2E tests in staging before production.
 
-- Deployment requires explicit `approved: true`; activation additionally requires `activate: true`.
-- Exact hostname allowlist for action endpoints, HTTPS-only actions, no literal-IP or internal-domain destinations.
-- Rejects inline Authorization/Cookie/API-key headers, n8n expressions, and arbitrary code.
-- Server bearer authentication, loopback default, request size and basic per-IP rate limits.
-- API keys are read from environment variables and not returned in API or MCP results.
-- Up to 20 sequential HTTP actions per workflow; static payloads only.
-
-### Important residual risks
-
-- **DNS rebinding and redirects:** URL string validation is not a substitute for runtime egress firewall rules. The n8n worker executes requests independently and may follow redirects or resolve an allowed domain to private IP space. Deny private CIDRs and metadata endpoints at the network layer.
-- **Duplicate creation:** Creation is not idempotent. Repeating a deployment creates another workflow. Check the n8n dashboard before retrying after ambiguous failures.
-- **Authentication:** HTTP API bearer tokens are not OAuth. Keep the API on loopback or behind a properly configured TLS/authentication gateway. Rotate compromised tokens.
-- **Model output:** AI providers may hallucinate or misinterpret a request. Always review the preview and target API documentation before approval.
-- **Provider privileges:** n8n API credentials should have minimum necessary scope and be isolated from production secrets where possible.
-- **Logs and prompts:** Requests may contain confidential business data; use a trusted model endpoint and control retention at the provider.
-- **Approval provenance:** This version relies on the calling client to capture human consent; it does not provide cryptographic approval attestations or persistent audit logs.
-
-Do not treat this version as a multi-tenant automation service without adding per-user authorization, quotas, durable auditing, network isolation, and idempotency.
+See [PRODUCTION_GATES](docs/PRODUCTION_GATES.md).
