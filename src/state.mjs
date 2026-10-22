@@ -111,6 +111,23 @@ export class StateStore {
     if (result.changes !== 1) throw new ValidationError('Deployment state transition rejected');
     this.audit('deployment_' + state, requestKey);
   }
+  reconcile(requestKey, workflowId) {
+    // An operator may complete ONLY an uncertain deployment and only after
+    // a fresh provider readback has been independently verified.
+    if (typeof workflowId !== 'string' || !/^[A-Za-z0-9_-]+$/.test(workflowId)) throw new ValidationError('Invalid workflow ID');
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const row = this.db.prepare('SELECT * FROM deployments WHERE request_key = ?').get(requestKey);
+      if (!row || row.state !== 'uncertain') throw new ValidationError('Only uncertain deployments can be reconciled');
+      if (row.resource_id && row.resource_id !== workflowId) throw new ValidationError('Reconciled workflow ID differs from recorded creation');
+      const update = this.db.prepare("UPDATE deployments SET state = 'created_inactive', resource_id = ?, updated_at = ? WHERE request_key = ? AND state = 'uncertain'")
+        .run(workflowId, this.now(), requestKey);
+      if (update.changes !== 1) throw new ValidationError('Reconciliation state transition rejected');
+      this.audit('deployment_reconciled_verified', requestKey);
+      this.db.exec('COMMIT');
+      return this.status(requestKey);
+    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+  }
   status(requestKey) {
     if (typeof requestKey !== 'string' || !/^[A-Za-z0-9._-]{12,128}$/.test(requestKey)) throw new ValidationError('Invalid idempotency key');
     const row = this.db.prepare('SELECT * FROM deployments WHERE request_key = ?').get(requestKey);

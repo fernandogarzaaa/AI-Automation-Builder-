@@ -47,6 +47,7 @@ export function approveLocally(previewId, env = process.env) {
 export async function deploy(previewId, idempotencyKey, env = process.env, fetcher = fetch) {
   const store = new StateStore(env);
   let claim;
+  let createdId;
   try {
     const existingPreview = store.preview(previewId);
     assertDeployPolicy(existingPreview.spec, env);
@@ -55,6 +56,7 @@ export async function deploy(previewId, idempotencyKey, env = process.env, fetch
     claim = store.claim(previewId, idempotencyKey);
     if (!claim.claimed) return store.status(idempotencyKey);
     const created = await createN8nWorkflow(claim.preview.spec, env, fetcher);
+    createdId = created.id;
     // Creation and verification are separate network operations. A readback
     // failure is uncertain, never permission to create a second workflow.
     await verifyN8nWorkflow(created.id, claim.preview.spec, env, fetcher);
@@ -63,7 +65,7 @@ export async function deploy(previewId, idempotencyKey, env = process.env, fetch
   } catch (error) {
     if (claim?.claimed) {
       // Even a timeout may mean a workflow was created. Never automatically repeat POST.
-      store.finish(idempotencyKey, 'uncertain');
+      store.finish(idempotencyKey, 'uncertain', createdId ?? null);
       return { idempotencyKey, status: 'uncertain', warning: 'Creation could not be verified. Inspect n8n before reconciliation. Do not retry with a new key.' };
     }
     throw error;
@@ -73,4 +75,20 @@ export async function deploy(previewId, idempotencyKey, env = process.env, fetch
 export function deploymentStatus(idempotencyKey, env = process.env) {
   const store = new StateStore(env);
   try { return store.status(idempotencyKey); } finally { store.close(); }
+}
+
+/** Operator-only recovery: GET and compare the exact graph, never POST again.
+ * This function is intentionally absent from MCP and the REST API.
+ */
+export async function reconcileLocally(idempotencyKey, workflowId, env = process.env, fetcher = fetch) {
+  const store = new StateStore(env);
+  try {
+    const status = store.status(idempotencyKey);
+    if (status.status !== 'uncertain') throw new ValidationError('Only uncertain deployments can be reconciled');
+    if (status.workflowId && status.workflowId !== workflowId) throw new ValidationError('Workflow ID differs from recorded creation');
+    const preview = store.preview(status.previewId);
+    assertDeployPolicy(preview.spec, env);
+    await verifyN8nWorkflow(workflowId, preview.spec, env, fetcher);
+    return store.reconcile(idempotencyKey, workflowId);
+  } finally { store.close(); }
 }
