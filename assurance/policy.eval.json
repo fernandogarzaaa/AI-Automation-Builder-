@@ -1,0 +1,59 @@
+{
+  "name": "aab-automation-policy-v1",
+  "claim": {
+    "id": "aab-policy-001",
+    "statement": "AAB rejects every independently labeled unsafe or unsupported automation in the 30-case policy fixture and accepts every legitimate example.",
+    "hypothesis": {
+      "primary": {
+        "metric": "accuracy",
+        "operator": ">=",
+        "threshold": 1
+      }
+    },
+    "methodology": {
+      "paired": true,
+      "repetitions": 1,
+      "minimum_samples": 30
+    },
+    "evaluation": {
+      "metrics": [
+        "accuracy",
+        "precision",
+        "recall",
+        "f1"
+      ]
+    }
+  },
+  "dataset": {
+    "path": "./assurance/cases.jsonl",
+    "format": "jsonl",
+    "id": "aab-policy-cases",
+    "version": "1"
+  },
+  "subject": {
+    "name": "aab-compiler-policy",
+    "command": "node ./assurance/subject.mjs {task_file}",
+    "timeout_ms": 10000
+  },
+  "baseline": {
+    "name": "always-accept-negative-control",
+    "command": "node ./assurance/always-accept.mjs {task_file}",
+    "timeout_ms": 10000
+  },
+  "evaluator": {
+    "type": "classification",
+    "positive": "accepted"
+  },
+  "metrics": [
+    "accuracy",
+    "precision",
+    "recall",
+    "f1"
+  ],
+  "repetitions": 1,
+  "paired": true,
+  "thresholds": {
+    "accuracy": ">=1.0"
+  },
+  "sanity_baseline": true
+}

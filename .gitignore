@@ -10,3 +10,9 @@ coverage/
 *.sqlite-wal
 *.sqlite-shm
 .aab/
+
+# Generated third-party assurance artifacts
+reports/
+.stryker-tmp/
+genesis-evidence/
+testteeth-report.json
