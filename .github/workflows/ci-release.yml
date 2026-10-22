@@ -93,7 +93,10 @@ jobs:
           set -euo pipefail
           node "$RUNNER_TEMP/genesis-src/bin/genesis.js" gate assurance/policy.eval.json --out genesis-evidence
           node assurance/check-genesis-results.mjs genesis-evidence
-          node "$RUNNER_TEMP/genesis-src/bin/genesis.js" verify genesis-evidence/evaluation
+          # Ephemeral CI signature checks the bundle mechanics; it is not third-party attestation.
+          node "$RUNNER_TEMP/genesis-src/bin/genesis.js" keygen --out "$RUNNER_TEMP/aab-ci-key"
+          node "$RUNNER_TEMP/genesis-src/bin/genesis.js" attest genesis-evidence/evaluation --signer github-actions-ephemeral --key "$RUNNER_TEMP/aab-ci-key.ed25519.pem"
+          node "$RUNNER_TEMP/genesis-src/bin/genesis.js" verify genesis-evidence/evaluation --pubkey "$RUNNER_TEMP/aab-ci-key.ed25519.pub.pem"
       - name: Preserve Genesis evidence bundle
         if: always()
         uses: actions/upload-artifact@v4

@@ -1,24 +1,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { validateSpec, ValidationError } from '../src/spec.mjs';
+import { assertDeployPolicy } from '../src/security.mjs';
+import { compileN8n } from '../src/n8n.mjs';
 
-test('Genesis registration contains independently labeled positive and negative controls', (t) => {
-  const lines = readFileSync('assurance/cases.jsonl', 'utf8').trim().split('\n').filter(Boolean);
-  assert.equal(lines.length, 30);
-  const cases = lines.map(line => JSON.parse(line));
-  assert.equal(cases.filter(c => c.reference === 'accepted').length, 12);
-  assert.equal(cases.filter(c => c.reference === 'rejected').length, 18);
-  assert.equal(new Set(cases.map(c => c.id)).size, 30);
-  const directory = mkdtempSync(join(tmpdir(), 'aab-genesis-cases-'));
-  t.after(() => rmSync(directory, { recursive: true, force: true }));
-  const taskFile = join(directory, 'task.json');
-  for (const item of cases) {
-    writeFileSync(taskFile, JSON.stringify(item), 'utf8');
-    const candidate = spawnSync(process.execPath, ['assurance/subject.mjs', taskFile], { encoding: 'utf8', timeout: 5000 });
-    assert.equal(candidate.status, 0, 'subject errored on ' + item.id + ': ' + candidate.stderr);
-    assert.equal(JSON.parse(candidate.stdout).label, item.reference, 'independent gold mismatch: ' + item.id);
-  }
+const fixture = readFileSync('assurance/cases.jsonl', 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
+test('Genesis suite registers independent positive and negative controls', () => {
+  assert.equal(fixture.length, 30);
+  assert.equal(fixture.filter(c => c.reference === 'accepted').length, 12);
+  assert.equal(fixture.filter(c => c.reference === 'rejected').length, 18);
+  assert.equal(new Set(fixture.map(c => c.id)).size, 30);
 });
+for (const item of fixture) {
+  test('policy contract: ' + item.id, () => {
+    let observed = 'accepted';
+    try {
+      const spec = validateSpec(item.input);
+      assertDeployPolicy(spec, { AAB_ALLOWED_ACTION_HOSTS: 'httpbin.org,api.example.com' });
+      const workflow = compileN8n(spec);
+      assert.equal(workflow.nodes.length, spec.actions.length + 1);
+      assert.equal(Object.keys(workflow.connections).length, spec.actions.length);
+      for (let i = 0; i < spec.actions.length; i++) {
+        assert.equal(workflow.nodes[i+1].parameters.url, spec.actions[i].url);
+        assert.equal(workflow.nodes[i+1].parameters.method, spec.actions[i].method);
+      }
+    } catch (error) {
+      if (!(error instanceof ValidationError)) throw error;
+      observed = 'rejected';
+    }
+    assert.equal(observed, item.reference, 'Gold mismatch for ' + item.id);
+  });
+}
