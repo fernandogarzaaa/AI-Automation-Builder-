@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { StateStore } from './state.mjs';
 import { validateSpec, ValidationError } from './spec.mjs';
 import { assertDeployPolicy, n8nBaseUrl } from './security.mjs';
-import { compileN8n, createN8nWorkflow } from './n8n.mjs';
+import { compileN8n, createN8nWorkflow, verifyN8nWorkflow } from './n8n.mjs';
 
 function providerFor(value) {
   if (value !== 'n8n') throw new ValidationError('Only n8n is supported for deployment in v0.2.0');
@@ -55,6 +55,9 @@ export async function deploy(previewId, idempotencyKey, env = process.env, fetch
     claim = store.claim(previewId, idempotencyKey);
     if (!claim.claimed) return store.status(idempotencyKey);
     const created = await createN8nWorkflow(claim.preview.spec, env, fetcher);
+    // Creation and verification are separate network operations. A readback
+    // failure is uncertain, never permission to create a second workflow.
+    await verifyN8nWorkflow(created.id, claim.preview.spec, env, fetcher);
     store.finish(idempotencyKey, 'created_inactive', created.id);
     return store.status(idempotencyKey);
   } catch (error) {
