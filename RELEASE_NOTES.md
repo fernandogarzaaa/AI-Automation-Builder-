@@ -1,16 +1,11 @@
-# v0.2.0 — Durable, operator-gated automation creation
+# v0.3.0 — Genesis and TestTeeth assurance gates
 
-**Security and reliability release, not universal-platform GA.**
+Release of a **narrow, evidence-backed validation layer**, not a production-readiness certification.
 
-- SQLite-backed preview receipts, plan digests and audit events.
-- Strict 30-minute approval expiry and operator-only interactive approval through the local CLI.
-- Atomic claim of one deployment per preview, persistent idempotency keys and no automatic POST replay after uncertain outcomes.
-- Status and preview inspection exposed to MCP/REST.
-- Remove publicly model-callable `approved: true` and `activate: true` deployment shortcuts.
-- Creation produces an inactive n8n workflow; activation is performed in n8n after separate review.
-- Correct MCP handshake compatibility claim: 2025-11-25 and 2025-06-18 only.
-- Node 24 CI, syntax and regression checks, explicit release gates.
+- Adds a frozen 36-case AutomationSpec validator and destination allowlist contract suite.
+- Integrates TestTeeth 0.2.0 and StrykerJS 9.0.0, with fail-under 80% mutation score on `src/spec.mjs` and `src/security.mjs`.
+- Integrates pinned Genesis 0.4.0 source, its exact-answer evaluations, and its adversarial evaluator-assurance release gate.
+- Publishes Genesis and mutation evidence as Actions artifacts and blocks the release until syntax, unit, Genesis, and TestTeeth gates pass.
+- Documents measured scope, claim boundaries, and failures that must not be misrepresented as passes.
 
-**Breaking change:** `automation_deploy` and `POST /v1/deploy` now take `previewId` and `idempotencyKey` after a local `approve`. CLI `deploy spec.json --approve` is removed. Consult README.
-
-**Not qualified:** Real n8n sandbox execution, network egress enforcement, OAuth connection provisioning, multi-tenant security, operational SLOs, and other vendor adapters. See docs/PRODUCTION_GATES.md.
+**Still unverified:** Real n8n sandbox execution, live provider credentials/permission matrix, egress firewall/SSRF protections at runtime, OAuth, backup/restore, and production operations. Make/Activepieces/Zapier still have no live adapters. The current scope remains n8n-only.

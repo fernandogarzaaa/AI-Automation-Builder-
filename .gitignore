@@ -10,3 +10,8 @@ coverage/
 *.sqlite-wal
 *.sqlite-shm
 .aab/
+
+reports/
+mutation.json
+.tools/
+.stryker-tmp/
