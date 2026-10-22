@@ -48,7 +48,7 @@ export function validateSpec(input) {
   const bytes = Buffer.byteLength(JSON.stringify(input) ?? '');
   if (bytes > 65536) fail('Automation exceeds 64 KiB');
   hasOnly(input, ['version', 'name', 'description', 'trigger', 'actions'], 'automation');
-  if (input.version !== 1) fail('version must be 1');
+  if (![1, 2].includes(input.version)) fail('version must be 1 or 2');
   const name = nonempty(input.name, 100, 'name');
   const description = typeof input.description === 'string' && input.description.length <= 1000 ? input.description : fail('description must be text up to 1000 characters');
   const trigger = input.trigger;
@@ -63,7 +63,7 @@ export function validateSpec(input) {
   const ids = new Set();
   const actions = input.actions.map((action, index) => {
     if (!record(action)) fail('Action ' + index + ' must be an object');
-    hasOnly(action, ['id', 'type', 'method', 'url', 'headers', 'body'], 'action ' + index);
+    hasOnly(action, input.version === 2 ? ['id', 'type', 'method', 'url', 'headers', 'body', 'next'] : ['id', 'type', 'method', 'url', 'headers', 'body'], 'action ' + index);
     if (action.type !== 'http') fail('Only HTTP actions are supported in v0.1');
     if (typeof action.id !== 'string' || !/^[a-z][a-z0-9_-]{0,39}$/.test(action.id) || ids.has(action.id)) fail('Action IDs must be unique, lowercase, and 1-40 characters');
     ids.add(action.id);
@@ -83,7 +83,27 @@ export function validateSpec(input) {
       if (serialized === undefined || Buffer.byteLength(serialized) > 8192) fail('Body must be JSON up to 8 KiB');
       noExpressions(action.body);
     }
-    return { id: action.id, type: 'http', method: action.method, url, headers, ...(action.body === undefined ? {} : { body: action.body }) };
+    if (input.version === 2 && action.next !== undefined && (typeof action.next !== 'string' || !/^[a-z][a-z0-9_-]{0,39}$/.test(action.next))) fail('Invalid next action ID');
+    return { id: action.id, type: 'http', method: action.method, url, headers, ...(action.body === undefined ? {} : { body: action.body }), ...(input.version === 2 && action.next !== undefined ? { next: action.next } : {}) };
   });
-  return { version: 1, name, description, trigger: { type: trigger.type, ...(trigger.path ? { path: trigger.path } : {}), ...(trigger.cron ? { cron: trigger.cron } : {}) }, actions };
+  if (input.version === 2) {
+    // Deliberately bounded: one linear successor per node; cycles and forks are
+    // rejected until branch/error semantics can be qualified independently.
+    const successors = new Map(actions.map((a, i) => [a.id, a.next ?? (i + 1 < actions.length ? actions[i + 1].id : null)]));
+    const ids = new Set(actions.map(a => a.id));
+    const incoming = new Map(actions.map(a => [a.id, 0]));
+    for (const dest of successors.values()) {
+      if (dest === null) continue;
+      if (!ids.has(dest)) fail('Unknown next action ID');
+      incoming.set(dest, incoming.get(dest) + 1);
+      if (incoming.get(dest) > 1) fail('Multiple incoming edges are not supported');
+    }
+    if (incoming.get(actions[0].id) !== 0) fail('First action must have no incoming edges');
+    const seen = new Set();
+    let next = actions[0].id;
+    while (next !== null && !seen.has(next)) { seen.add(next); next = successors.get(next); }
+    if (next !== null || seen.size !== actions.length) fail('Workflow graph must be acyclic and connected');
+    actions.forEach((action, index) => { if (successors.get(action.id) !== null) action.next = successors.get(action.id); });
+  }
+  return { version: input.version, name, description, trigger: { type: trigger.type, ...(trigger.path ? { path: trigger.path } : {}), ...(trigger.cron ? { cron: trigger.cron } : {}) }, actions };
 }

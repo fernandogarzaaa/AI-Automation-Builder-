@@ -53,9 +53,14 @@ export function compileN8n(spec) {
       parameters,
     };
     nodes.push(node);
-    connections[previous] = { main: [[{ node: node.name, type: 'main', index: 0 }]] };
+    if (spec.version === 1 || index === 0) connections[previous] = { main: [[{ node: node.name, type: 'main', index: 0 }]] };
     previous = node.name;
   });
+  if (spec.version === 2) {
+    for (const action of spec.actions) {
+      if (action.next) connections[action.id] = { main: [[{ node: action.next, type: 'main', index: 0 }]] };
+    }
+  }
   return { name: spec.name, nodes, connections, settings: { executionOrder: 'v1' } };
 }
 
