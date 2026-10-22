@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline/promises';
 import { readFile } from 'node:fs/promises';
 import { planAutomation } from './planner.mjs';
 import { previewAutomation, providers } from './core.mjs';
-import { prepare, inspect, approveLocally, deploy, deploymentStatus } from './operations.mjs';
+import { prepare, inspect, approveLocally, deploy, deploymentStatus, reconcileLocally } from './operations.mjs';
 import { safeError } from './security.mjs';
 import { ValidationError } from './spec.mjs';
 
@@ -45,6 +45,15 @@ async function main() {
     }
     case 'deploy': output = await deploy(args[0], args[1]); break;
     case 'status': output = deploymentStatus(args[0]); break;
+    case 'reconcile': {
+      const status = deploymentStatus(args[0]);
+      if (status.status !== 'uncertain') throw new ValidationError('Only uncertain deployments can be reconciled');
+      if (!args[1]) throw new ValidationError('Missing n8n workflow ID');
+      await askApproval('Reconcile ONLY this uncertain deployment after n8n readback.\nIdempotency key: ' +
+        args[0] + '\nWorkflow ID: ' + args[1] + '\nNo new automation is created or activated.');
+      output = await reconcileLocally(args[0], args[1]);
+      break;
+    }
     default:
       process.stderr.write('Usage: ai-automation-builder providers | plan "request" | compile spec.json | preview spec.json | inspect PREVIEW_ID | approve PREVIEW_ID | deploy PREVIEW_ID IDEMPOTENCY_KEY | status IDEMPOTENCY_KEY\n');
       process.exitCode = 2;
