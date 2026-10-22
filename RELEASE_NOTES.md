@@ -1,16 +1,10 @@
-# v0.2.0 — Durable, operator-gated automation creation
+# v0.3.0 — TestTeeth + Genesis assurance gates
 
-**Security and reliability release, not universal-platform GA.**
+Release publication is conditional on all gates passing on the exact main branch SHA.
 
-- SQLite-backed preview receipts, plan digests and audit events.
-- Strict 30-minute approval expiry and operator-only interactive approval through the local CLI.
-- Atomic claim of one deployment per preview, persistent idempotency keys and no automatic POST replay after uncertain outcomes.
-- Status and preview inspection exposed to MCP/REST.
-- Remove publicly model-callable `approved: true` and `activate: true` deployment shortcuts.
-- Creation produces an inactive n8n workflow; activation is performed in n8n after separate review.
-- Correct MCP handshake compatibility claim: 2025-11-25 and 2025-06-18 only.
-- Node 24 CI, syntax and regression checks, explicit release gates.
+- TestTeeth 0.2.0 drives StrykerJS 9.6.0 to mutation-test security-critical JS logic and enforces a hard 80% kill threshold. Empty, errored and cancelled runs are not accepted.
+- Genesis 0.4.0 (pinned immutable source revision) evaluates AAB's policy compiler against 30 independently labeled safe and unsafe plans, assures its evaluator, and requires a passing negative control.
+- Both tools produce downloadable GitHub Actions evidence artifacts. The release job depends on both gates and ordinary unit tests.
+- Documented exact fixture population, evaluation assumptions, and limits of all gate claims.
 
-**Breaking change:** `automation_deploy` and `POST /v1/deploy` now take `previewId` and `idempotencyKey` after a local `approve`. CLI `deploy spec.json --approve` is removed. Consult README.
-
-**Not qualified:** Real n8n sandbox execution, network egress enforcement, OAuth connection provisioning, multi-tenant security, operational SLOs, and other vendor adapters. See docs/PRODUCTION_GATES.md.
+**Still unqualified for production:** full live-provider sandbox integration; n8n API schema/version proof; worker egress firewalls and DNS-rebinding defenses; multi-tenant OAuth and secret management; distributed deployments; other vendor adapters. These gates measure static quality and policy behavior only.

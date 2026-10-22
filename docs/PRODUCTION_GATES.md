@@ -5,6 +5,8 @@ This checklist distinguishes implemented code from demonstrated operational safe
 | Gate | Status | Evidence needed before a production claim |
 | --- | --- | --- |
 | Source checks and mocked tests | Implemented | GitHub Actions green on exact release SHA |
+| TestTeeth mutation kill rate ≥80% | CI configured; actual outcome pending | StrykerJS evidence JSON, nonempty mutant set, hard fail below threshold |
+| Genesis policy safety evaluation | CI configured; actual outcome pending | 30 independent fixtures, SOUND evaluator, negative control, signed-off evidence bundle |
 | True n8n draft creation | UNVERIFIED | Authorized staging n8n API creates expected workflow; GET verifies the exact nodes/edges |
 | True n8n workflow runtime | UNVERIFIED | Activate in sandbox and observe webhook/manual/schedule execution, retries and failures |
 | Real provider API permission matrix | UNVERIFIED | Test n8n API scopes/version; ensure least-privilege roles and disabled-by-default |

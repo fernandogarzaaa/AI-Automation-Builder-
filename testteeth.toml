@@ -1,0 +1,4 @@
+lang = "typescript"
+fail_under = 80
+workers = 2
+engine_config = "stryker.config.json"

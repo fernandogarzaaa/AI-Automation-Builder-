@@ -6,10 +6,11 @@
 
 AI Automation Builder (AAB) is a self-hostable MCP + CLI + HTTP system that turns natural-language instructions into an audited *workflow draft*. It targets Claude, Codex, Cursor, and any compatible stdio MCP client.
 
-**Current release: v0.2.0.** n8n is the sole implemented deployment target. Make, Zapier, Activepieces, Pipedream, and other platforms need separate, version-tested adapters, permission grants, and credential brokers. It is **not** a hosted universal automation service or a verified production SaaS.
+**Assurance candidate: v0.3.0 (publish only after gates succeed).** n8n is the sole implemented deployment target. Make, Zapier, Activepieces, Pipedream, and other platforms need separate, version-tested adapters, permission grants, and credential brokers. It is **not** a hosted universal automation service or a verified production SaaS.
 
 ## Implemented
 
+- Dual release gates: TestTeeth + StrykerJS mutation score ≥80% on security-critical code, and Genesis labeled policy/assurance gate (30 preregistered cases, 12 accept / 18 reject plus an always-accept negative control).
 - Strict `AutomationSpec v1` plan validation. Optional natural-language planner using an OpenAI-compatible chat-completions model. Models cannot supply credentials or arbitrary executable code.
 - n8n native workflow JSON compiler: manual, webhook and five-field cron triggers, with sequential static HTTPS API requests (GET, POST, PUT, PATCH, DELETE).
 - Stdio MCP server, CLI, and local bearer-protected HTTP API.
@@ -111,6 +112,12 @@ npm run check
 npm test
 ```
 
-The release workflow creates tag `v0.2.0` **only after CI verification succeeds**. Live credentials are never used in unit tests.
+The release workflow creates tag `v0.3.0` **only after unit tests, TestTeeth mutation, and Genesis assurance all succeed**. Any failure or missing evidence blocks publication. The suite's results are GitHub Actions artifacts. Live credentials are never used in unit tests.
 
 MIT licensed.
+
+## TestTeeth + Genesis qualification
+
+The independent test harnesses are sourced from [testteeth](https://github.com/fernandogarzaaa/testteeth) and [genesis](https://github.com/fernandogarzaaa/genesis). CI pins TestTeeth 0.2.0, StrykerJS 9.6.0 and Genesis commit `8871e2988f3dab4bab029aa8e3c131172daa826a`.
+
+Read [the dual-gate spec](assurance/README.md) and [production qualification gates](docs/PRODUCTION_GATES.md). A passing static-policy evaluation does not establish live n8n API compatibility, runtime security, or cross-platform production readiness.

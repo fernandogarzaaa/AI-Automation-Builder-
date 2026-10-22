@@ -1,36 +1,123 @@
-name: Verify and release
+name: Verify, assure and release
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
 permissions:
   contents: read
+
+concurrency:
+  group: aab-verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   verify:
+    name: Unit and syntax
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
-      - name: Check syntax
+          node-version: "24"
+      - name: Static syntax
         run: npm run check
-      - name: Run tests
+      - name: Unit and MCP integration tests
         run: npm test
+
+  mutation:
+    name: TestTeeth / StrykerJS 80% gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned test engines
+        run: |
+          python -m pip install --disable-pip-version-check testteeth==0.2.0
+          npm install --no-save @stryker-mutator/core@9.6.0
+      - name: Run mutation gate (no sample shortcuts)
+        run: |
+          testteeth run src/spec.mjs src/security.mjs src/state.mjs src/operations.mjs \
+            --lang typescript --engine-config stryker.config.json \
+            --fail-under 80 --json testteeth-report.json
+      - name: Reject empty or non-scoring TestTeeth report
+        if: success()
+        run: |
+          python - <<'PY'
+          import json
+          r = json.load(open('testteeth-report.json'))
+          assert r['total'] > 0, 'Zero mutants is NOT a mutation pass'
+          assert r['score'] is not None and r['score'] >= 80, 'Mutation score below 80%'
+          assert r['engine'] == 'stryker', 'Unexpected TestTeeth engine'
+          print('TestTeeth:',r['killed'],'/',r['total'],r['score'])
+          PY
+      - name: Preserve mutation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testteeth-mutation-evidence
+          path: |
+            testteeth-report.json
+            reports/mutation/
+          if-no-files-found: warn
+
+  genesis:
+    name: Genesis policy/assurance gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install Genesis pinned source
+        run: |
+          set -euo pipefail
+          GENESIS_DIR="$RUNNER_TEMP/genesis-src"
+          git init -q "$GENESIS_DIR"
+          git -C "$GENESIS_DIR" remote add origin https://github.com/fernandogarzaaa/genesis.git
+          git -C "$GENESIS_DIR" fetch -q --depth 1 origin 8871e2988f3dab4bab029aa8e3c131172daa826a
+          git -C "$GENESIS_DIR" checkout -q --detach FETCH_HEAD
+          test "$(git -C "$GENESIS_DIR" rev-parse HEAD)" = 8871e2988f3dab4bab029aa8e3c131172daa826a
+          (cd "$GENESIS_DIR" && npm ci && npm run build)
+      - name: Run Genesis gate with independent labels and negative-control subject
+        run: |
+          set -euo pipefail
+          node "$RUNNER_TEMP/genesis-src/bin/genesis.js" gate assurance/policy.eval.json --out genesis-evidence
+          node assurance/check-genesis-results.mjs genesis-evidence
+          node "$RUNNER_TEMP/genesis-src/bin/genesis.js" verify genesis-evidence/evaluation
+      - name: Preserve Genesis evidence bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genesis-policy-evidence
+          path: genesis-evidence/
+          if-no-files-found: warn
+
   release:
-    needs: verify
+    name: Publish v0.3.0 only after all gates pass
+    needs: [verify, mutation, genesis]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Publish v0.2.0 once
+      - name: Publish v0.3.0 exactly once
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.2.0 >/dev/null 2>&1; then
-            echo "Release v0.2.0 already exists"
+          set -euo pipefail
+          if gh release view v0.3.0 >/dev/null 2>&1; then
+            echo "Release v0.3.0 already exists"
           else
-            gh release create v0.2.0 --target "$GITHUB_SHA" --title "v0.2.0" --notes-file RELEASE_NOTES.md
+            gh release create v0.3.0 --target "$GITHUB_SHA" --title "v0.3.0" --notes-file RELEASE_NOTES.md
           fi
