@@ -6,7 +6,7 @@
 
 AI Automation Builder (AAB) is a self-hostable MCP + CLI + HTTP system that turns natural-language instructions into an audited *workflow draft*. It targets Claude, Codex, Cursor, and any compatible stdio MCP client.
 
-**Current release: v0.2.0.** n8n is the sole implemented deployment target. Make, Zapier, Activepieces, Pipedream, and other platforms need separate, version-tested adapters, permission grants, and credential brokers. It is **not** a hosted universal automation service or a verified production SaaS.
+**Current release: v0.3.0.** n8n is the sole implemented deployment target. Make, Zapier, Activepieces, Pipedream, and other platforms need separate, version-tested adapters, permission grants, and credential brokers. It is **not** a hosted universal automation service or a verified production SaaS.
 
 ## Implemented
 
@@ -111,6 +111,10 @@ npm run check
 npm test
 ```
 
-The release workflow creates tag `v0.2.0` **only after CI verification succeeds**. Live credentials are never used in unit tests.
+The release workflow creates tag `v0.3.0` **only after CI verification succeeds**. Live credentials are never used in unit tests.
 
 MIT licensed.
+
+## Assurance gates
+
+The GitHub release workflow now requires [TestTeeth mutation testing](docs/ASSURANCE.md) (at least 80% on validator/egress-policy source) and a [Genesis evaluation and evaluator-assurance gate](docs/ASSURANCE.md) over a frozen 36-case contract. Both emit inspectable Actions artifacts. **Passing these checks does not qualify a live n8n instance or a production network perimeter.** Consult the [production readiness gates](docs/PRODUCTION_GATES.md).

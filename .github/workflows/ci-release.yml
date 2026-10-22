@@ -1,36 +1,96 @@
-name: Verify and release
+name: Verify, assure and release
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: assurance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   verify:
+    name: Syntax and unit contracts
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Check syntax
-        run: npm run check
-      - name: Run tests
-        run: npm test
-  release:
+      - run: npm run check
+      - run: npm test
+  genesis:
+    name: Genesis evidence and evaluator assurance
     needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: fernandogarzaaa/genesis
+          ref: 8871e2988f3dab4bab029aa8e3c131172daa826a
+          path: .tools/genesis
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build pinned Genesis engine
+        run: |
+          npm ci --prefix .tools/genesis --ignore-scripts
+          npm run build --prefix .tools/genesis
+      - name: Genesis 36-case capability and evaluator assurance gate
+        run: node .tools/genesis/bin/genesis.js gate evaluations/automation-spec/evaluation.yaml --out reports/genesis --json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: genesis-evidence
+          path: reports/genesis
+          if-no-files-found: warn
+          retention-days: 30
+  mutation:
+    name: TestTeeth mutation gate (80% minimum)
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned mutation engines
+        run: |
+          python -m pip install testteeth==0.2.0
+          npm install --no-save --no-package-lock @stryker-mutator/core@9.0.0
+      - name: TestTeeth mutation check for validation and egress policy
+        run: testteeth run src/spec.mjs src/security.mjs --lang typescript --fail-under 80 --workers 2 --no-coverage --json mutation.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: testteeth-mutation
+          path: mutation.json
+          if-no-files-found: warn
+          retention-days: 30
+  release:
+    name: Publish v0.3.0 only after all gates
+    needs: [verify, genesis, mutation]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Publish v0.2.0 once
+      - name: Publish v0.3.0 once
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v0.2.0 >/dev/null 2>&1; then
-            echo "Release v0.2.0 already exists"
+          if gh release view v0.3.0 >/dev/null 2>&1; then
+            echo 'Release v0.3.0 already exists'
           else
-            gh release create v0.2.0 --target "$GITHUB_SHA" --title "v0.2.0" --notes-file RELEASE_NOTES.md
+            gh release create v0.3.0 --target "$GITHUB_SHA" --title 'v0.3.0 — Genesis + TestTeeth assurance' --notes-file RELEASE_NOTES.md
           fi

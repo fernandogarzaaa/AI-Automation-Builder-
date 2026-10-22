@@ -1,0 +1,33 @@
+name: automation-spec-security-contract-v1
+claim:
+  id: aab-automation-spec-v1
+  statement: "The AutomationSpec v1 validator accepts each documented valid workflow and rejects every unsafe or malformed workflow in the frozen 36-case contract dataset."
+  hypothesis:
+    primary:
+      metric: task_success
+      operator: ">="
+      threshold: 1.0
+  methodology:
+    paired: false
+    repetitions: 1
+    minimum_samples: 36
+  evaluation:
+    metrics:
+      - task_success
+dataset:
+  path: ./evaluations/automation-spec/cases.jsonl
+  format: jsonl
+  id: automation-spec-security-contract
+  version: "1"
+subject:
+  name: automation-spec-validator
+  command: "node ./evaluations/automation-spec/subject.mjs {task_file}"
+  timeout_ms: 10000
+evaluator:
+  type: exact
+metrics:
+  - task_success
+repetitions: 1
+paired: false
+thresholds:
+  task_success: ">=1.0"
