@@ -59,7 +59,7 @@ export function compileN8n(spec) {
   return { name: spec.name, nodes, connections, settings: { executionOrder: 'v1' } };
 }
 
-async function requestN8n(path, method, payload, env, fetcher) {
+export async function requestN8n(path, method, payload, env, fetcher) {
   const base = n8nBaseUrl(env).replace(/\/api\/v1\/?$/, '');
   if (!env.N8N_API_KEY) throw new ValidationError('N8N_API_KEY is required');
   const response = await fetcher(base + '/api/v1' + path, {
@@ -84,4 +84,38 @@ export async function createN8nWorkflow(spec, env = process.env, fetcher = fetch
 export async function activateN8nWorkflow(id, env = process.env, fetcher = fetch) {
   await requestN8n('/workflows/' + encodeURIComponent(id) + '/activate', 'POST', undefined, env, fetcher);
   return { id, status: 'activated' };
+}
+
+/**
+ * Read back a created workflow and compare its material executable graph.
+ * Provider-generated node IDs/metadata are intentionally ignored, while
+ * action methods, URLs, headers, bodies, trigger parameters and connections
+ * must remain byte-for-byte semantically equal.
+ */
+export async function verifyN8nWorkflow(id, spec, env = process.env, fetcher = fetch) {
+  if (typeof id !== 'string' || !/^[A-Za-z0-9_-]+$/.test(id)) throw new ValidationError('Invalid workflow ID');
+  const live = await requestN8n('/workflows/' + encodeURIComponent(id), 'GET', undefined, env, fetcher);
+  const expected = compileN8n(spec);
+  if (!Array.isArray(live.nodes) || !live.connections || typeof live.connections !== 'object') {
+    throw new Error('n8n verification response lacks executable graph');
+  }
+  // Repeated names are ambiguous and would make n8n connection comparison unsafe.
+  const expectedNodes = new Map(expected.nodes.map(node => [node.name, node]));
+  const actualNodes = new Map(live.nodes.map(node => [node.name, node]));
+  if (expectedNodes.size !== expected.nodes.length || actualNodes.size !== live.nodes.length ||
+      actualNodes.size !== expectedNodes.size) throw new Error('n8n verification node set mismatch');
+  for (const [name, wanted] of expectedNodes) {
+    const got = actualNodes.get(name);
+    if (!got || got.type !== wanted.type || got.typeVersion !== wanted.typeVersion ||
+        JSON.stringify(got.parameters) !== JSON.stringify(wanted.parameters)) {
+      throw new Error('n8n verification node mismatch: ' + name);
+    }
+  }
+  if (JSON.stringify(live.connections) !== JSON.stringify(expected.connections)) {
+    throw new Error('n8n verification connections mismatch');
+  }
+  // Always require inactive. A provider default that activates new workflows
+  // would violate the explicit human-activation boundary.
+  if (live.active !== false) throw new Error('n8n verification requires an inactive workflow');
+  return { id, status: 'verified_inactive', nodes: actualNodes.size };
 }

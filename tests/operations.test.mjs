@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { prepare, inspect, approveLocally, deploy, deploymentStatus } from '../src/operations.mjs';
 import { StateStore } from '../src/state.mjs';
 import { ValidationError } from '../src/spec.mjs';
+import { compileN8n } from '../src/n8n.mjs';
 
 const spec = () => ({ version: 1, name: 'Example', description: 'Test', trigger: { type: 'manual' },
   actions: [{ id: 'notify', type: 'http', method: 'POST', url: 'https://httpbin.org/post' }] });
@@ -25,13 +26,14 @@ test('approved workflow creates once; identical retries return the stored result
   const env = environment(t), p = prepare(spec(), 'n8n', env);
   approveLocally(p.previewId, env);
   let count = 0;
-  const fetcher = async () => {
+  const fetcher = async (url) => {
     count++;
+    if (url.endsWith('/flow123')) return { ok: true, text: async () => JSON.stringify({ ...compileN8n(spec()), id: 'flow123', active: false }) };
     return { ok: true, text: async () => JSON.stringify({ id: 'flow123', name: 'Example' }) };
   };
   assert.equal((await deploy(p.previewId, p.idempotencyKey, env, fetcher)).status, 'created_inactive');
   assert.equal((await deploy(p.previewId, p.idempotencyKey, env, fetcher)).status, 'created_inactive');
-  assert.equal(count, 1);
+  assert.equal(count, 2);
   assert.equal(deploymentStatus(p.idempotencyKey, env).workflowId, 'flow123');
   await assert.rejects(deploy(p.previewId, 'other-key-also-long-enough', env, fetcher), ValidationError);
 });
