@@ -28,7 +28,7 @@ test('approved workflow creates once; identical retries return the stored result
   let count = 0;
   const fetcher = async (url) => {
     count++;
-    if (url.endsWith('/flow123')) return { ok: true, text: async () => JSON.stringify({ ...compileN8n(spec()), id: 'flow123', active: false }) };
+    if (url.endsWith('/flow123')) return { ok: true, text: async () => JSON.stringify({ ...compileN8n(p.spec), id: 'flow123', active: false }) };
     return { ok: true, text: async () => JSON.stringify({ id: 'flow123', name: 'Example' }) };
   };
   assert.equal((await deploy(p.previewId, p.idempotencyKey, env, fetcher)).status, 'created_inactive');
