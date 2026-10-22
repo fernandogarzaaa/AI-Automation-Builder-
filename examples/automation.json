@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "name": "Example notification",
+  "description": "Send a JSON message to an HTTPS endpoint on manual execution.",
+  "trigger": { "type": "manual" },
+  "actions": [
+    {
+      "id": "send_notification",
+      "type": "http",
+      "method": "POST",
+      "url": "https://httpbin.org/post",
+      "headers": { "content-type": "application/json" },
+      "body": { "message": "Hello from AI Automation Builder" }
+    }
+  ]
+}
