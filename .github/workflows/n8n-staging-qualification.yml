@@ -1,0 +1,28 @@
+name: Opt-in n8n staging qualification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: aab-n8n-staging
+  cancel-in-progress: false
+jobs:
+  n8n-staging:
+    name: Inactive create / graph readback / delete
+    environment: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify n8n staging provider
+        env:
+          AAB_STAGING_CONFIRM: STAGING_ONLY_CREATE_AND_DELETE
+          AAB_STAGING_EXPECTED_HOST: ${{ vars.N8N_STAGING_EXPECTED_HOST }}
+          AAB_STAGING_ACTION_URL: ${{ vars.N8N_STAGING_ACTION_URL }}
+          AAB_ALLOWED_ACTION_HOSTS: ${{ vars.N8N_STAGING_ALLOWED_ACTION_HOSTS }}
+          N8N_BASE_URL: ${{ secrets.N8N_STAGING_BASE_URL }}
+          N8N_API_KEY: ${{ secrets.N8N_STAGING_API_KEY }}
+        run: node scripts/qualify-n8n-staging.mjs
