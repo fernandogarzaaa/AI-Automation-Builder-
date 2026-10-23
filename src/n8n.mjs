@@ -75,6 +75,7 @@ export async function requestN8n(path, method, payload, env, fetcher) {
     method,
     headers: { 'X-N8N-API-KEY': env.N8N_API_KEY, 'content-type': 'application/json' },
     ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
+    redirect: 'error',
     signal: AbortSignal.timeout(20000),
   });
   const raw = (await response.text()).slice(0, 100000);
