@@ -53,9 +53,18 @@ export function compileN8n(spec) {
       parameters,
     };
     nodes.push(node);
-    connections[previous] = { main: [[{ node: node.name, type: 'main', index: 0 }]] };
+    if (spec.version === 1) connections[previous] = { main: [[{ node: node.name, type: 'main', index: 0 }]] };
     previous = node.name;
   });
+  if (spec.version === 2) {
+    const destinations = new Set(spec.actions.map(action => action.next).filter(Boolean));
+    const root = spec.actions.find(action => !destinations.has(action.id));
+    if (!root) throw new ValidationError('Workflow graph has no entry');
+    connections[start.name] = { main: [[{ node: root.id, type: 'main', index: 0 }]] };
+    for (const action of spec.actions) {
+      if (action.next) connections[action.id] = { main: [[{ node: action.next, type: 'main', index: 0 }]] };
+    }
+  }
   return { name: spec.name, nodes, connections, settings: { executionOrder: 'v1' } };
 }
 

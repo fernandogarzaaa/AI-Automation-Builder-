@@ -51,7 +51,7 @@ good('name of exactly 100 characters', changed(s => { s.name = 'a'.repeat(100); 
 invalid('description too long', changed(s => { s.description = 'a'.repeat(1001); }), /description must be text up to 1000 characters/);
 invalid('description not string', changed(s => { s.description = null; }), /description must be text up to 1000 characters/);
 good('description exactly 1000 chars', changed(s => { s.description = 'a'.repeat(1000); }));
-invalid('wrong version', changed(s => { s.version = 2; }), /version must be 1/);
+invalid('wrong version', changed(s => { s.version = 3; }), /version must be 1 or 2/);
 invalid('unsupported top-level property names the property', changed(s => { s.evil = true; }), /automation: unsupported field evil/);
 invalid('nonobject trigger', changed(s => { s.trigger = null; }), /trigger must be an object/);
 invalid('array trigger', changed(s => { s.trigger = []; }), /trigger must be an object/);
