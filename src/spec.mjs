@@ -83,27 +83,39 @@ export function validateSpec(input) {
       if (serialized === undefined || Buffer.byteLength(serialized) > 8192) fail('Body must be JSON up to 8 KiB');
       noExpressions(action.body);
     }
-    if (input.version === 2 && action.next !== undefined && (typeof action.next !== 'string' || !/^[a-z][a-z0-9_-]{0,39}$/.test(action.next))) fail('Invalid next action ID');
+    if (input.version === 2 && action.next !== undefined && action.next !== null && (typeof action.next !== 'string' || !/^[a-z][a-z0-9_-]{0,39}$/.test(action.next))) fail('Invalid next action ID');
     return { id: action.id, type: 'http', method: action.method, url, headers, ...(action.body === undefined ? {} : { body: action.body }), ...(input.version === 2 && action.next !== undefined ? { next: action.next } : {}) };
   });
   if (input.version === 2) {
-    // Deliberately bounded: one linear successor per node; cycles and forks are
-    // rejected until branch/error semantics can be qualified independently.
-    const successors = new Map(actions.map((a, i) => [a.id, a.next ?? (i + 1 < actions.length ? actions[i + 1].id : null)]));
-    const ids = new Set(actions.map(a => a.id));
-    const incoming = new Map(actions.map(a => [a.id, 0]));
-    for (const dest of successors.values()) {
-      if (dest === null) continue;
-      if (!ids.has(dest)) fail('Unknown next action ID');
-      incoming.set(dest, incoming.get(dest) + 1);
-      if (incoming.get(dest) > 1) fail('Multiple incoming edges are not supported');
+    // When an edge is specified, all unspecified successors are terminals.
+    // Without explicit edges, retain the v1 action-array order as a convenient
+    // shorthand. This permits arbitrary action array order in explicit mode.
+    const explicit = actions.some(action => Object.hasOwn(action, 'next'));
+    const successors = new Map(actions.map((action, i) => [
+      action.id,
+      explicit ? (action.next ?? null) : (actions[i + 1]?.id ?? null),
+    ]));
+    const incoming = new Map(actions.map(action => [action.id, 0]));
+    for (const destination of successors.values()) {
+      if (destination === null) continue;
+      if (!incoming.has(destination)) fail('Unknown next action ID');
+      incoming.set(destination, incoming.get(destination) + 1);
+      if (incoming.get(destination) > 1) fail('Multiple incoming edges are not supported');
     }
-    if (incoming.get(actions[0].id) !== 0) fail('First action must have no incoming edges');
+    const roots = actions.filter(action => incoming.get(action.id) === 0);
+    if (roots.length !== 1) fail('Workflow graph must have exactly one entry');
     const seen = new Set();
-    let next = actions[0].id;
-    while (next !== null && !seen.has(next)) { seen.add(next); next = successors.get(next); }
-    if (next !== null || seen.size !== actions.length) fail('Workflow graph must be acyclic and connected');
-    actions.forEach((action, index) => { if (successors.get(action.id) !== null) action.next = successors.get(action.id); });
+    let current = roots[0].id;
+    while (current !== null && !seen.has(current)) {
+      seen.add(current);
+      current = successors.get(current);
+    }
+    if (current !== null || seen.size !== actions.length) fail('Workflow graph must be acyclic and connected');
+    actions.forEach(action => {
+      const destination = successors.get(action.id);
+      if (destination === null) delete action.next;
+      else action.next = destination;
+    });
   }
   return { version: input.version, name, description, trigger: { type: trigger.type, ...(trigger.path ? { path: trigger.path } : {}), ...(trigger.cron ? { cron: trigger.cron } : {}) }, actions };
 }
