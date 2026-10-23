@@ -23,6 +23,7 @@ export async function planAutomation(prompt, env = process.env, fetcher = fetch)
       temperature: 0.1,
       messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: prompt }],
     }),
+    redirect: 'error',
     signal: AbortSignal.timeout(30000),
   });
   if (!response.ok) throw new Error('AI provider returned HTTP ' + response.status);
